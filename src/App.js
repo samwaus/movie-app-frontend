@@ -6,14 +6,84 @@ import axios from "axios";
 const buttonRef = React.createRef();
 const bulkUploadAPI =
   "https://2e5uvbeaqj.execute-api.ap-southeast-2.amazonaws.com/dev/api/movies";
+const filmWorldMovieAPI =
+  "https://2e5uvbeaqj.execute-api.ap-southeast-2.amazonaws.com/dev/api/filmworld/movies";
+const cinemaWorldMovieAPI =
+  "https://2e5uvbeaqj.execute-api.ap-southeast-2.amazonaws.com/dev/api/cinemaworld/movies";
 
 function App() {
   const [csvData, setCsvData] = useState([]);
   const [moviesList, setMoviesList] = useState([]);
+
+  // preload movie data
   useEffect(() => {
     let mounted = true;
+
+    // load movies from both APIs and consolidate if both APIs return data for the same movie name
+    let movieListArray = [];
+
+    const addMovieToArray = (movie, api) => {
+      console.log("all", movieListArray, movie, api);
+      if (movieListArray.length) {
+        let existingMovieDataObj = movieListArray.filter(
+          (movieObj) => movieObj.name === movie.name
+        )[0];
+        if (existingMovieDataObj) {
+          // movie already exists, update the price
+          existingMovieDataObj[api + "-price"] = movie.price;
+        } else {
+          existingMovieDataObj = { ...movie, [api + "-price"]: movie.price };
+        }
+        console.log("existingMovieDataObj", existingMovieDataObj);
+        const movieListArrayWithoutThisMovie = movieListArray.filter(
+          (movieObj) => movieObj.name !== movie.name
+        );
+        movieListArray = [
+          ...movieListArrayWithoutThisMovie,
+          existingMovieDataObj,
+        ];
+      } else {
+        movieListArray.push({ ...movie, [api + "-price"]: movie.price });
+      }
+    };
+
+    const requestOne = axios.get(filmWorldMovieAPI);
+    const requestTwo = axios.get(cinemaWorldMovieAPI);
+
+    axios
+      .all([requestOne, requestTwo])
+      .then(
+        axios.spread((...responses) => {
+          const responseOne = responses[0];
+          const responseTwo = responses[1];
+          if (responseOne) {
+            //console.log(responseOne);
+            if (responseOne.data.movies) {
+              responseOne.data.movies.map((movie) => {
+                addMovieToArray(movie, "filmworld");
+              });
+            }
+          }
+          if (responseTwo) {
+            //console.log(responseTwo);
+            if (responseTwo.data.movies) {
+              responseTwo.data.movies.map((movie) => {
+                addMovieToArray(movie, "cinemaworld");
+              });
+            }
+          }
+          setMoviesList(movieListArray);
+          // use/access the results
+        })
+      )
+      .catch((errors) => {
+        // react on errors.
+        console.log(errors);
+      });
+
     return () => (mounted = false);
   }, []);
+
   const handleOpenDialog = (e) => {
     // Note that the ref is set async, so it might be null at some point
     if (buttonRef.current) {
@@ -62,7 +132,37 @@ function App() {
           It is assumed that the user is logged in using AWS Cognito user pool
           created in the backend API.
         </p>
-
+        {moviesList && moviesList.length && (
+          <table width="100%" cellPadding="20">
+            <tbody>
+              <tr>
+                <th>Movie</th>
+                <th>Film World Price</th>
+                <th>Cinema World Price</th>
+              </tr>
+              {moviesList.map((movie, i) => {
+                return (
+                  <tr key={i}>
+                    <td>{movie.name}</td>
+                    <td>
+                      {movie["filmworld-price"]
+                        ? movie["filmworld-price"]
+                        : "-"}
+                    </td>
+                    <td>
+                      {movie["cinemaworld-price"]
+                        ? movie["cinemaworld-price"]
+                        : "-"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        <br />
+        <br />
+        <hr />
         <p>
           It is assumed that the user is an admin to upload the csv and the csv
           file contains both cinamworld and filworld movie data of the last 24
